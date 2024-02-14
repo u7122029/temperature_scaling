@@ -5,12 +5,13 @@ https://github.com/gpleiss/efficient_densenet_pytorch
 
 import fire
 import os
-import time
 import torch
 import torchvision as tv
 from torch import nn, optim
 from torch.utils.data.sampler import SubsetRandomSampler
 from models import DenseNet
+from tqdm import tqdm
+
 
 
 class Meter():
@@ -61,7 +62,7 @@ class Meter():
 
 
 def run_epoch(loader, model, criterion, optimizer, epoch=0, n_epochs=0, train=True):
-    time_meter = Meter(name='Time', cum=True)
+    #time_meter = Meter(name='Time', cum=True)
     loss_meter = Meter(name='Loss', cum=False)
     error_meter = Meter(name='Error', cum=False)
 
@@ -72,10 +73,10 @@ def run_epoch(loader, model, criterion, optimizer, epoch=0, n_epochs=0, train=Tr
         model.eval()
         print('Evaluating')
 
-    end = time.time()
-    for i, (input, target) in enumerate(loader):
+    #end = time.time()
+    progressbar = tqdm(enumerate(loader), total=len(loader), desc=('Train' if train else 'Eval') + f" Epoch {epoch}/{n_epochs}")
+    for i, (input, target) in progressbar:
         if train:
-            model.zero_grad()
             optimizer.zero_grad()
 
             # Forward pass
@@ -100,22 +101,16 @@ def run_epoch(loader, model, criterion, optimizer, epoch=0, n_epochs=0, train=Tr
         # Accounting
         _, predictions = torch.topk(output, 1)
         error = 1 - torch.eq(predictions, target).float().mean()
-        batch_time = time.time() - end
-        end = time.time()
+        #batch_time = time.time() - end
+        #end = time.time()
 
         # Log errors
-        time_meter.update(batch_time)
+        #time_meter.update(batch_time)
         loss_meter.update(loss)
         error_meter.update(error)
-        print('  '.join([
-            '%s: (Epoch %d of %d) [%04d/%04d]' % ('Train' if train else 'Eval',
-                epoch, n_epochs, i + 1, len(loader)),
-            str(time_meter),
-            str(loss_meter),
-            str(error_meter),
-        ]))
+        progressbar.set_postfix({"loss": loss_meter.value().item(), "error": error_meter.value().item()})
 
-    return time_meter.value(), loss_meter.value(), error_meter.value()
+    return None, loss_meter.value(), error_meter.value()
 
 
 def train(data, save, valid_size=5000, seed=None,
@@ -173,8 +168,8 @@ def train(data, save, valid_size=5000, seed=None,
     #
     # IMPORTANT! We need to use the same validation set for temperature
     # scaling, so we're going to save the indices for later
-    train_set = tv.datasets.CIFAR100(data, train=True, transform=train_transforms, download=True)
-    valid_set = tv.datasets.CIFAR100(data, train=True, transform=test_transforms, download=False)
+    train_set = tv.datasets.CIFAR10(data, train=True, transform=train_transforms, download=True)
+    valid_set = tv.datasets.CIFAR10(data, train=True, transform=test_transforms, download=False)
     indices = torch.randperm(len(train_set))
     train_indices = indices[:len(indices) - valid_size]
     valid_indices = indices[len(indices) - valid_size:] if valid_size else None
@@ -189,14 +184,14 @@ def train(data, save, valid_size=5000, seed=None,
     model = DenseNet(
         growth_rate=growth_rate,
         block_config=block_config,
-        num_classes=100
+        num_classes=10
     )
     # Wrap model if multiple gpus
     if torch.cuda.device_count() > 1:
         model_wrapper = torch.nn.DataParallel(model).cuda()
     else:
         model_wrapper = model.cuda()
-    print(model_wrapper)
+    #print(model_wrapper)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model_wrapper.parameters(), lr=lr, momentum=momentum, nesterov=True)
@@ -205,7 +200,6 @@ def train(data, save, valid_size=5000, seed=None,
     # Train model
     best_error = 1
     for epoch in range(1, n_epochs + 1):
-        scheduler.step()
         run_epoch(
             loader=train_loader,
             model=model_wrapper,
@@ -215,6 +209,7 @@ def train(data, save, valid_size=5000, seed=None,
             n_epochs=n_epochs,
             train=True,
         )
+        scheduler.step()
         valid_results = run_epoch(
             loader=valid_loader,
             model=model_wrapper,

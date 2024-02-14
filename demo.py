@@ -42,7 +42,7 @@ def demo(data, save, depth=40, growth_rate=12, batch_size=256):
         tv.transforms.ToTensor(),
         tv.transforms.Normalize(mean=mean, std=stdv),
     ])
-    valid_set = tv.datasets.CIFAR100(data, train=True, transform=test_transforms, download=True)
+    valid_set = tv.datasets.CIFAR10(data, train=True, transform=test_transforms, download=True)
     valid_loader = torch.utils.data.DataLoader(valid_set, pin_memory=True, batch_size=batch_size,
                                                sampler=SubsetRandomSampler(valid_indices))
 
@@ -53,7 +53,7 @@ def demo(data, save, depth=40, growth_rate=12, batch_size=256):
     orig_model = DenseNet(
         growth_rate=growth_rate,
         block_config=block_config,
-        num_classes=100
+        num_classes=10
     ).cuda()
     orig_model.load_state_dict(state_dict)
 
